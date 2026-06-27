@@ -154,26 +154,48 @@ function buildCard(v){
   return card;
 }
 
-/* ---------- Render the hardcoded VIDEOS list ---------- */
-function renderHardcoded(){
+/* ---------- Set up the big featured player(s) — permanent playlist ---------- */
+function setupAllFeatured(){
   const first = VIDEOS[0] ? VIDEOS[0].id : "";
-
-  document.querySelectorAll("[data-player='featured']").forEach(function(el){
+  document.querySelectorAll("[data-player]").forEach(function(el){
     setupFeatured(el, first);
-  });
-  document.querySelectorAll("[data-player]:not([data-player='featured'])").forEach(function(el){
-    setupFeatured(el, first);
-  });
-
-  document.querySelectorAll("[data-grid]").forEach(function(grid){
-    const limit = parseInt(grid.dataset.grid, 10) || VIDEOS.length;
-    grid.innerHTML = "";
-    VIDEOS.slice(0, limit).forEach(function(v){ grid.appendChild(buildCard(v)); });
   });
 }
 
-/* ---------- Full auto-publish via API key (optional) ---------- */
-function loadFromChannel(){
+/* ---------- Fill the "Recent from the channel" grids ---------- */
+function renderGrids(vids){
+  document.querySelectorAll("[data-grid]").forEach(function(grid){
+    const limit = parseInt(grid.dataset.grid, 10) || vids.length;
+    grid.innerHTML = "";
+    vids.slice(0, limit).forEach(function(v){ grid.appendChild(buildCard(v)); });
+  });
+}
+
+/* ---------- Auto-pull newest uploads from the channel's public RSS feed ----
+   No API key needed. Read through a CORS proxy (the browser can't read the
+   YouTube feed directly), newest first. Falls back to the VIDEOS list if the
+   feed or proxy is ever unavailable, so the homepage never looks empty. ----- */
+function loadRecentFromFeed(){
+  const feed  = "https://www.youtube.com/feeds/videos.xml?channel_id=" + YT_CONFIG.channelId;
+  const proxy = "https://api.allorigins.win/raw?url=" + encodeURIComponent(feed);
+  return fetch(proxy)
+    .then(function(r){ if(!r.ok) throw new Error("feed fetch failed"); return r.text(); })
+    .then(function(txt){
+      const xml = new DOMParser().parseFromString(txt, "text/xml");
+      const entries = xml.getElementsByTagName("entry");
+      const vids = [];
+      for(var i = 0; i < entries.length; i++){
+        var idEl = entries[i].getElementsByTagName("yt:videoId")[0];
+        var tEl  = entries[i].getElementsByTagName("title")[0];
+        if(idEl && tEl){ vids.push({ id: idEl.textContent, title: tEl.textContent }); }
+      }
+      if(!vids.length) throw new Error("no entries in feed");
+      return vids; // already newest-first
+    });
+}
+
+/* ---------- Full auto-publish via API key (optional, most robust) ---------- */
+function loadGridsFromApi(){
   const channelId = YT_CONFIG.channelId;
   const apiKey = YT_CONFIG.apiKey;
   const maxResults = YT_CONFIG.maxResults;
@@ -181,7 +203,7 @@ function loadFromChannel(){
   const url = "https://www.googleapis.com/youtube/v3/playlistItems" +
               "?part=snippet&maxResults=" + maxResults +
               "&playlistId=" + uploads + "&key=" + apiKey;
-  fetch(url)
+  return fetch(url)
     .then(function(res){ if(!res.ok) throw new Error("YouTube request failed"); return res.json(); })
     .then(function(data){
       const items = data.items || [];
@@ -189,29 +211,23 @@ function loadFromChannel(){
         .filter(function(i){ return i.snippet && i.snippet.resourceId && i.snippet.resourceId.videoId; })
         .map(function(i){ return { id: i.snippet.resourceId.videoId, title: i.snippet.title }; });
       if(!vids.length) throw new Error("No videos returned");
-      const first = vids[0].id;
-      document.querySelectorAll("[data-player='featured']").forEach(function(el){
-        setupFeatured(el, first);
-      });
-      document.querySelectorAll("[data-player]:not([data-player='featured'])").forEach(function(el){
-        setupFeatured(el, first);
-      });
-      document.querySelectorAll("[data-grid]").forEach(function(grid){
-        const limit = parseInt(grid.dataset.grid, 10) || vids.length;
-        grid.innerHTML = "";
-        vids.slice(0, limit).forEach(function(v){ grid.appendChild(buildCard(v)); });
-      });
-    })
-    .catch(function(err){
-      console.warn("Channel auto-pull failed, using hardcoded list:", err);
-      renderHardcoded();
+      return vids;
     });
 }
 
-/* ---------- Decide which mode to run ---------- */
+/* ---------- Decide what to run ---------- */
 function loadVideos(){
-  if(YT_CONFIG.channelId && YT_CONFIG.apiKey){ loadFromChannel(); }
-  else if(VIDEOS.length){ renderHardcoded(); }
+  // Featured player(s): always the permanent playlist set above.
+  setupAllFeatured();
+
+  // Recent grids: API key if provided, else the public RSS feed, else fallback.
+  var source = (YT_CONFIG.channelId && YT_CONFIG.apiKey) ? loadGridsFromApi() : loadRecentFromFeed();
+  source
+    .then(function(vids){ renderGrids(vids); })
+    .catch(function(err){
+      console.warn("Auto-pull unavailable, showing saved videos:", err);
+      renderGrids(VIDEOS);
+    });
 }
 
 document.addEventListener("DOMContentLoaded", function(){
