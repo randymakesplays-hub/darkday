@@ -162,7 +162,7 @@ function renderHardcoded(){
     setupFeatured(el, first);
   });
   document.querySelectorAll("[data-player]:not([data-player='featured'])").forEach(function(el){
-    mountFeatured(el, first);
+    setupFeatured(el, first);
   });
 
   document.querySelectorAll("[data-grid]").forEach(function(grid){
@@ -194,7 +194,7 @@ function loadFromChannel(){
         setupFeatured(el, first);
       });
       document.querySelectorAll("[data-player]:not([data-player='featured'])").forEach(function(el){
-        mountFeatured(el, first);
+        setupFeatured(el, first);
       });
       document.querySelectorAll("[data-grid]").forEach(function(grid){
         const limit = parseInt(grid.dataset.grid, 10) || vids.length;
