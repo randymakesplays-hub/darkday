@@ -86,10 +86,14 @@ function mountPlayer(el, videoId){
 function mountFeatured(el, fallbackId){
   el.querySelectorAll(".play-btn").forEach(function(btn){
     btn.addEventListener("click", function(){
-      var src;
+      // Playlist set: open David's playlist on YouTube in a new tab.
       if(FEATURED.playlist){
-        src = "https://www.youtube-nocookie.com/embed/videoseries?list=" + FEATURED.playlist + "&autoplay=1&rel=0";
-      } else if(FEATURED.video){
+        window.open("https://www.youtube.com/playlist?list=" + FEATURED.playlist, "_blank", "noopener");
+        return;
+      }
+      // Otherwise play a single video inline.
+      var src;
+      if(FEATURED.video){
         src = "https://www.youtube-nocookie.com/embed/" + FEATURED.video + "?autoplay=1&rel=0";
       } else if(fallbackId){
         src = "https://www.youtube-nocookie.com/embed/" + fallbackId + "?autoplay=1&rel=0";
