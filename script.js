@@ -21,6 +21,18 @@ const VIDEOS = [
 ];
 
 /* -----------------------------------------------------------
+   MAIN FEATURED PLAYER (the big one on Home / Watch).
+   Set ONE of these:
+     playlist : a YouTube playlist ID (plays through the whole list)
+     video    : a single video ID
+   If both are blank, it falls back to the first video above.
+   ----------------------------------------------------------- */
+const FEATURED = {
+  playlist: "PLlo6nE3v7Hm2axuyJPZoNv-0Uc1xh_-4T",
+  video:    ""
+};
+
+/* -----------------------------------------------------------
    OPTIONAL — full auto-publish (pulls EVERY new upload itself).
    Leave blank to keep using the VIDEOS list above.
    Fill both in later to switch the whole site to live mode.
@@ -70,6 +82,26 @@ function mountPlayer(el, videoId){
   });
 }
 
+/* ---------- Featured player (playlist, single video, or fallback) ---------- */
+function mountFeatured(el, fallbackId){
+  el.querySelectorAll(".play-btn").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var src;
+      if(FEATURED.playlist){
+        src = "https://www.youtube-nocookie.com/embed/videoseries?list=" + FEATURED.playlist + "&autoplay=1&rel=0";
+      } else if(FEATURED.video){
+        src = "https://www.youtube-nocookie.com/embed/" + FEATURED.video + "?autoplay=1&rel=0";
+      } else if(fallbackId){
+        src = "https://www.youtube-nocookie.com/embed/" + fallbackId + "?autoplay=1&rel=0";
+      } else {
+        window.open(YT_CONFIG.channelUrl, "_blank", "noopener"); return;
+      }
+      el.innerHTML = '<iframe src="' + src + '" title="Teaching" ' +
+                     'allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
+    });
+  });
+}
+
 /* ---------- Pull a real title from YouTube (no key needed) ----------
    Tries YouTube's oEmbed first, then a CORS-friendly proxy, then a
    plain fallback. Whatever happens, the thumbnail and playback are
@@ -113,10 +145,10 @@ function renderHardcoded(){
 
   document.querySelectorAll("[data-player='featured']").forEach(function(el){
     el.innerHTML = '<button class="play-btn" aria-label="Play teaching"></button>';
-    mountPlayer(el, first);
+    mountFeatured(el, first);
   });
   document.querySelectorAll("[data-player]:not([data-player='featured'])").forEach(function(el){
-    mountPlayer(el, first);
+    mountFeatured(el, first);
   });
 
   document.querySelectorAll("[data-grid]").forEach(function(grid){
@@ -146,10 +178,10 @@ function loadFromChannel(){
       const first = vids[0].id;
       document.querySelectorAll("[data-player='featured']").forEach(function(el){
         el.innerHTML = '<button class="play-btn" aria-label="Play latest teaching"></button>';
-        mountPlayer(el, first);
+        mountFeatured(el, first);
       });
       document.querySelectorAll("[data-player]:not([data-player='featured'])").forEach(function(el){
-        mountPlayer(el, first);
+        mountFeatured(el, first);
       });
       document.querySelectorAll("[data-grid]").forEach(function(grid){
         const limit = parseInt(grid.dataset.grid, 10) || vids.length;
