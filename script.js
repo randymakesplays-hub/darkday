@@ -42,7 +42,7 @@ const FEATURED_THUMB = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDA
    ----------------------------------------------------------- */
 const YT_CONFIG = {
   channelId:  "UCCq6eh7b6jurNvRWFqfz8Hw",                 // David's channel
-  apiKey:     "",                                          // add a YouTube Data API key to go fully live
+  apiKey:     "AIzaSyArQ_T0p9XbiMhG37fccPC8jWKi59coouw",   // YouTube Data API key (referrer-restricted)
   channelUrl: "https://www.youtube.com/@DavidHouse4thAngel",
   maxResults: 6
 };
@@ -85,34 +85,38 @@ function mountPlayer(el, videoId){
   });
 }
 
-/* ---------- Set up a featured player (thumbnail + play button) ---------- */
-function setupFeatured(el, fallbackId){
-  el.innerHTML =
-    (FEATURED_THUMB ? '<img src="' + FEATURED_THUMB + '" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">' : '') +
-    '<button class="play-btn" aria-label="Play teaching"></button>';
-  mountFeatured(el, fallbackId);
+/* ---------- Featured: permanent PLAYLIST (Dark Day page) ----------
+   Keeps the baked-in cover image and opens David's playlist on YouTube,
+   exactly as before. Used only on the Dark Day page. ----------------- */
+function setupPlaylistFeatured(){
+  document.querySelectorAll("[data-player]").forEach(function(el){
+    el.innerHTML =
+      (FEATURED_THUMB ? '<img src="' + FEATURED_THUMB + '" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">' : '') +
+      '<button class="play-btn" aria-label="Play teaching"></button>';
+    el.querySelectorAll(".play-btn").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        window.open("https://www.youtube.com/playlist?list=" + FEATURED.playlist, "_blank", "noopener");
+      });
+    });
+  });
 }
 
-/* ---------- Featured player (playlist, single video, or fallback) ---------- */
-function mountFeatured(el, fallbackId){
-  el.querySelectorAll(".play-btn").forEach(function(btn){
-    btn.addEventListener("click", function(){
-      // Playlist set: open David's playlist on YouTube in a new tab.
-      if(FEATURED.playlist){
-        window.open("https://www.youtube.com/playlist?list=" + FEATURED.playlist, "_blank", "noopener");
-        return;
-      }
-      // Otherwise play a single video inline.
-      var src;
-      if(FEATURED.video){
-        src = "https://www.youtube-nocookie.com/embed/" + FEATURED.video + "?autoplay=1&rel=0";
-      } else if(fallbackId){
-        src = "https://www.youtube-nocookie.com/embed/" + fallbackId + "?autoplay=1&rel=0";
-      } else {
-        window.open(YT_CONFIG.channelUrl, "_blank", "noopener"); return;
-      }
-      el.innerHTML = '<iframe src="' + src + '" title="Teaching" ' +
-                     'allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
+/* ---------- Featured: NEWEST video, plays inline (Home / Watch) ----------
+   Shows the latest upload's own thumbnail; clicking plays it right there. */
+function setupVideoFeatured(v){
+  if(!v) return;
+  document.querySelectorAll("[data-player]").forEach(function(el){
+    el.innerHTML =
+      '<img src="https://img.youtube.com/vi/' + v.id + '/maxresdefault.jpg" ' +
+        'onerror="this.onerror=null;this.src=\'https://img.youtube.com/vi/' + v.id + '/hqdefault.jpg\'" ' +
+        'alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover">' +
+      '<button class="play-btn" aria-label="Play latest teaching"></button>';
+    el.querySelectorAll(".play-btn").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        el.innerHTML =
+          '<iframe src="https://www.youtube-nocookie.com/embed/' + v.id + '?autoplay=1&rel=0" ' +
+          'title="Latest teaching" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>';
+      });
     });
   });
 }
@@ -154,20 +158,15 @@ function buildCard(v){
   return card;
 }
 
-/* ---------- Set up the big featured player(s) — permanent playlist ---------- */
-function setupAllFeatured(){
-  const first = VIDEOS[0] ? VIDEOS[0].id : "";
-  document.querySelectorAll("[data-player]").forEach(function(el){
-    setupFeatured(el, first);
-  });
-}
-
-/* ---------- Fill the "Recent from the channel" grids ---------- */
-function renderGrids(vids){
+/* ---------- Fill the "Recent from the channel" grids ----------
+   `offset` lets the home grid skip the newest video (it's the featured
+   player up top), so the page shows the latest 4 with no repeats. ----- */
+function renderGrids(vids, offset){
+  offset = offset || 0;
   document.querySelectorAll("[data-grid]").forEach(function(grid){
-    const limit = parseInt(grid.dataset.grid, 10) || vids.length;
+    const limit = parseInt(grid.dataset.grid, 10) || (vids.length - offset);
     grid.innerHTML = "";
-    vids.slice(0, limit).forEach(function(v){ grid.appendChild(buildCard(v)); });
+    vids.slice(offset, offset + limit).forEach(function(v){ grid.appendChild(buildCard(v)); });
   });
 }
 
@@ -215,19 +214,38 @@ function loadGridsFromApi(){
     });
 }
 
-/* ---------- Decide what to run ---------- */
+/* ---------- Decide what to run ----------
+   Dark Day page   -> featured player stays the permanent playlist.
+   Everywhere else -> featured player is David's NEWEST upload (inline),
+                      and the grid shows the next ones after it.
+   Either way the grid auto-pulls live: API key if set, else RSS, else
+   the saved VIDEOS list as a safety net. ------------------------------- */
 function loadVideos(){
-  // Featured player(s): always the permanent playlist set above.
-  setupAllFeatured();
+  var isDarkday = /the-dark-day/.test(location.pathname);
 
-  // Recent grids: API key if provided, else the public RSS feed, else fallback.
+  // Dark Day featured can be set right away — it doesn't need live data.
+  if(isDarkday){ setupPlaylistFeatured(); }
+
   var source = (YT_CONFIG.channelId && YT_CONFIG.apiKey) ? loadGridsFromApi() : loadRecentFromFeed();
   source
-    .then(function(vids){ renderGrids(vids); })
+    .then(function(vids){ applyVideos(vids, isDarkday); })
     .catch(function(err){
       console.warn("Auto-pull unavailable, showing saved videos:", err);
-      renderGrids(VIDEOS);
+      applyVideos(VIDEOS, isDarkday);
     });
+}
+
+/* ---------- Place the live videos once they've loaded ---------- */
+function applyVideos(vids, isDarkday){
+  if(!vids || !vids.length){ return; }
+  if(isDarkday){
+    // Featured is already the playlist; show newest in any grid present.
+    renderGrids(vids, 0);
+  } else {
+    // Newest upload becomes the featured player; grid shows the rest.
+    setupVideoFeatured(vids[0]);
+    renderGrids(vids, 1);
+  }
 }
 
 document.addEventListener("DOMContentLoaded", function(){
